@@ -1,0 +1,6 @@
+rootProject.name = 'viewer'
+include "ClearControl"
+include "Halcyon"
+// project(':ClearControl').projectDir = new File('C:\\users\\myersadmin\\soft\\ClearControl')
+project(':ClearControl').projectDir = new File('/Users/dibrov/Documents/PhD/software/ClearControl1/ClearControl')
+project(':Halcyon').projectDir = new File('/Users/dibrov/Documents/PhD/software/Halcyon')
