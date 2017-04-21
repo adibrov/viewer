@@ -26,6 +26,8 @@ public class Slicer {
     private int planeSizeY;
     private ByteBuffer imageBuffer;
     DirectAccessImageByteGray image;
+    private short min;
+    private short max;
 
     private String kernelSourceSlice;
     private String kernelSourceConvert;
@@ -47,6 +49,8 @@ public class Slicer {
         this.planeSizeX = (int) inputImg.dimension(0);
         this.planeSizeY = (int) inputImg.dimension(1);
         this.mPlane = pPlane;
+        this.min = 0;
+        this.max = 511;
 
         boolean compat = false;
 
@@ -66,6 +70,14 @@ public class Slicer {
         this.kernelSourceConvert = readFile("resources/kernels/SixteenToEightBit.cl");
 
         initCL();
+    }
+
+    public void setMin(short min) {
+        this.min = min;
+    }
+
+    public void setMax(short max) {
+        this.max = max;
     }
 
     private int[] selectedPlaneSize(Plane pPlane) {
@@ -95,12 +107,7 @@ public class Slicer {
         workSizeSlice[0] = sizeX;
         workSizeSlice[1] = sizeY;
         workSizeSlice[2] = sizeZ;
-        System.out.println(String.format("3d stack %dx%dx%d", sizeX, sizeY, sizeZ));
-
-        long workSizeConvert[] = new long[2];
-        workSizeConvert[0] = planeSizeX;
-        workSizeConvert[1] = planeSizeY;
-        System.out.println(String.format("2d slice: %dx%d",planeSizeX, planeSizeY));
+//        System.out.println(String.format("3d stack %dx%dx%d", sizeX, sizeY, sizeZ));
 
 
         clEnqueueWriteBuffer(commandQueue, pixelMem, true, 0,
@@ -115,41 +122,56 @@ public class Slicer {
         clSetKernelArg(kernelSlice, 5, Sizeof.cl_int, Pointer.to(new int[]{mPlane.getSlideDim()}));
         clSetKernelArg(kernelSlice, 6, Sizeof.cl_int, Pointer.to(new int[]{slicePos}));
 
-        clSetKernelArg(kernelConvert, 0, Sizeof.cl_mem, Pointer.to(interm));
-        clSetKernelArg(kernelConvert, 1, Sizeof.cl_mem, Pointer.to(outputImgCL));
-        clSetKernelArg(kernelConvert, 2, Sizeof.cl_int, Pointer.to(new int[] {planeSizeX}));
-        clSetKernelArg(kernelConvert, 3, Sizeof.cl_int, Pointer.to(new int[] {planeSizeY}));
-
 
         clEnqueueNDRangeKernel(commandQueue, kernelSlice, 3, null,
                 workSizeSlice, null, 0, null, null);
 
+
+        convert();
+
+
+
+//        ShortBuffer sh = ShortBuffer.allocate(planeSizeX*planeSizeY);
+//        clEnqueueReadBuffer(commandQueue, interm, CL_TRUE, 0,
+//                Sizeof.cl_short * planeSizeX * planeSizeY, Pointer.to(sh), 0, null,
+//                null);
+
+//        System.out.println("what we've got:");
+//        for (int i = 0; i <500; i++) {
+//            System.out.println(sh.get(i));
+//        }
+
+//        this.image.getBuffer().rewind();
+
+
+    }
+
+    public void convert() {
+
+        long workSizeConvert[] = new long[2];
+        workSizeConvert[0] = planeSizeX;
+        workSizeConvert[1] = planeSizeY;
+//        System.out.println(String.format("2d slice: %dx%d",planeSizeX, planeSizeY));
+
+        clSetKernelArg(kernelConvert, 0, Sizeof.cl_mem, Pointer.to(interm));
+        clSetKernelArg(kernelConvert, 1, Sizeof.cl_mem, Pointer.to(outputImgCL));
+        clSetKernelArg(kernelConvert, 2, Sizeof.cl_int, Pointer.to(new int[] {planeSizeX}));
+        clSetKernelArg(kernelConvert, 3, Sizeof.cl_int, Pointer.to(new int[] {planeSizeY}));
+        clSetKernelArg(kernelConvert, 4, Sizeof.cl_short, Pointer.to(new short[] {this.min}));
+        clSetKernelArg(kernelConvert, 5, Sizeof.cl_short, Pointer.to(new short[] {this.max}));
+
         clEnqueueNDRangeKernel(commandQueue, kernelConvert, 2, null,
                 workSizeConvert, null, 0, null, null);
-
 
         clEnqueueReadBuffer(commandQueue, outputImgCL, CL_TRUE, 0,
                 Sizeof.cl_char * planeSizeX * planeSizeY, Pointer.to(this.image.getBuffer()), 0, null,
                 null);
-
-        ShortBuffer sh = ShortBuffer.allocate(planeSizeX*planeSizeY);
-        clEnqueueReadBuffer(commandQueue, interm, CL_TRUE, 0,
-                Sizeof.cl_short * planeSizeX * planeSizeY, Pointer.to(sh), 0, null,
-                null);
-
-        System.out.println("what we've got:");
-        for (int i = 0; i <500; i++) {
-            System.out.println(sh.get(i));
-        }
-
-        this.image.getBuffer().rewind();
         try {
             this.image.update();
             System.out.println("upd image");
         } catch (Exception e) {
             e.printStackTrace();
         }
-
     }
 
 

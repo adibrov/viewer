@@ -10,11 +10,13 @@ import image.Slicer;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Slider;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.StackPane;
+import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import net.imglib2.img.basictypeaccess.offheap.ShortOffHeapAccess;
 import net.imglib2.img.planar.OffHeapPlanarImg;
@@ -25,21 +27,32 @@ import java.nio.ByteBuffer;
 import java.util.LinkedList;
 
 import static clearcontrol.simulation.loaders.SampleSpaceSaveAndLoad.loadUnsignedShortSampleSpaceFromDisk;
-import static net.imglib2.img.utils.Convert.convertTIFFToRaw;
 
 /**
  * Created by dibrov on 12/04/17.
  */
+
 public class JavaFX2DDisplay extends Application {
+
     private ImageView imageView_Source;
-    private DirectAccessImageByteGray imgIn;
+    private OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> imgIn;
+    private DirectAccessImageByteGray imgToDisplay;
     private int currentSlice;
     private LinkedList<Listener> listenerList;
+    Slicer slicer;
+    private Plane mPlane;
 
-
-    public JavaFX2DDisplay(DirectAccessImageByteGray img) {
+    public JavaFX2DDisplay(OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> img, Plane pPlane) {
         this.imgIn = img;
         this.currentSlice = 0;
+        this.mPlane = pPlane;
+        int[] activeDims = mPlane.getActiveDims();
+        this.imgToDisplay = new DirectAccessImageByteGray((int)img.dimension(activeDims[0]), (int)img.dimension
+                (activeDims[1]));
+        this.slicer = new Slicer(imgIn, imgToDisplay, Plane.XY);
+        slicer.getSlice(currentSlice);
+
+
         listenerList = new LinkedList<>();
     }
 
@@ -48,27 +61,52 @@ public class JavaFX2DDisplay extends Application {
 
 
         imageView_Source = new ImageView();
-        imageView_Source.setFitWidth(500);
-        imageView_Source.setFitHeight(500);
-        imageView_Source.setImage(imgIn);
+        imageView_Source.setImage(imgToDisplay);
+
+        VBox imageBox = new VBox(20);
+        imageBox.setPadding(new Insets(20,20,20,20));
+        imageBox.setMaxWidth(primaryStage.getMaxWidth());
+        imageBox.setAlignment(Pos.TOP_CENTER);
 
 
-        HBox hBoxImage = new HBox();
-        //e hBoxImage.getChildren().addAll(imageView_Source);
+        imageView_Source.fitWidthProperty().bind(primaryStage.widthProperty().multiply(0.85));
+        imageView_Source.fitHeightProperty().bind(imageView_Source.fitWidthProperty());
+        VBox vBoxSliders = new VBox(15);
+        vBoxSliders.setMinHeight(100);
+        vBoxSliders.setPadding(new Insets(20,20,20, 20));
+        vBoxSliders.setAlignment(Pos.BOTTOM_CENTER);
 
-        Slider slider = new Slider(0, 65, 0);
-        slider.setBlockIncrement(1);
-        slider.valueProperty().addListener((ob, o, n) -> {
+        Slider sliderZ = new Slider(0, imgIn.dimension(mPlane.getSlideDim()), 0);
+        sliderZ.setBlockIncrement(1);
+        sliderZ.valueProperty().addListener((ob, o, n) -> {
             currentSlice = n.intValue();
-            System.out.println("slide!");
-            notifyListeners();
+            slicer.getSlice(currentSlice);
+        });
+        Slider sliderMin = new Slider(0,511,0);
+        sliderMin.setBlockIncrement(1);
+        sliderMin.valueProperty().addListener((ob,o,n)->{
+            slicer.setMin(n.shortValue());
+            slicer.convert();
         });
 
-        hBoxImage.getChildren().addAll(imageView_Source, slider);
+        Slider sliderMax = new Slider(0,511,511);
+        sliderMax.setBlockIncrement(1);
+        sliderMax.valueProperty().addListener((ob,o,n)->{
+            slicer.setMax(n.shortValue());
+            slicer.convert();
+        });
+
+        vBoxSliders.getChildren().addAll(sliderZ, sliderMin, sliderMax);
+        imageBox.getChildren().addAll(imageView_Source,vBoxSliders);
+
+
 
         StackPane root = new StackPane();
-        root.getChildren().add(hBoxImage);
-        Scene scene = new Scene(root, 1400, 1000);
+        root.getChildren().add(imageBox);
+        Scene scene = new Scene(root, 500, 600);
+
+
+
         primaryStage.setTitle("Current slice");
         primaryStage.setScene(scene);
         primaryStage.show();
@@ -86,16 +124,6 @@ public class JavaFX2DDisplay extends Application {
         listenerList.add(listener);
     }
 
-    public void setImgIn(DirectAccessImageByteGray imgIn) {
-
-        this.imgIn = imgIn;
-        imageView_Source.setImage(this.imgIn);
-    }
-
-    public void updateImgBuffer(ByteBuffer buffer) throws Exception {
-        imgIn.setBuffer(buffer);
-    }
-
     public void run(String[] args) {
         launch(args);
     }
@@ -106,7 +134,7 @@ public class JavaFX2DDisplay extends Application {
         String path = "resources/img/smallWingStack692x520x50.raw";
         int[] dims = {692, 520, 50};
         long[] dimsLong = {692, 520, 50};
-        short[] rawArr = new short[dims[0]*dims[1]*dims[2]];
+        short[] rawArr = new short[dims[0] * dims[1] * dims[2]];
         rawArr = loadUnsignedShortSampleSpaceFromDisk(path, dims[0], dims[1], dims[2]);
 
         System.out.println("length:" + rawArr.length);
@@ -123,12 +151,10 @@ public class JavaFX2DDisplay extends Application {
         cmIn.copyFrom(rawArr);
 
 
-
         OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> imgIn = (OffHeapPlanarImg<UnsignedShortType,
                 ShortOffHeapAccess>) new OffHeapPlanarImgFactory().createShortInstance(cmIn, dimsLong, new
                 UnsignedShortType
                 ());
-
 
 
 //        System.out.println("image:");
@@ -139,12 +165,12 @@ public class JavaFX2DDisplay extends Application {
 
         DirectAccessImageByteGray img = new DirectAccessImageByteGray(dims[0], dims[1]);
 
-        Slicer slicer = new Slicer(imgIn, img, Plane.XY);
 
-        JavaFX2DDisplay display = new JavaFX2DDisplay(img);
-        display.addListener(() -> {
-            slicer.getSlice(display.currentSlice);
-        });
+
+        JavaFX2DDisplay display = new JavaFX2DDisplay(imgIn, Plane.XY);
+//        display.addListener(() -> {
+//            slicer.getSlice(display.currentSlice);
+//        });
 
         new JFXPanel();
         Platform.runLater(() -> {

@@ -218,8 +218,8 @@ public class SixteenToEightBitConverter {
                 UnsignedByteType());
         System.out.println("size of the output byte image: " + imgOut.getContiguousMemory().getSizeInBytes());
 
-        SixteenToEightBitConverter converter = new SixteenToEightBitConverter(imgIn, imgOut);
-        converter.convert();
+//        SixteenToEightBitConverter converter = new SixteenToEightBitConverter(imgIn, imgOut);
+
 
         cmOut.copyTo(arrb);
 
