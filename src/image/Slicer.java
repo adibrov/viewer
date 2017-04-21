@@ -39,30 +39,23 @@ public class Slicer {
     private cl_mem interm;
     private cl_mem outputImgCL;
 
+    private long[] workSizeSlice;
+    private long[] workSizeConvert;
+
 
     public Slicer(OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> inputImg,
                   DirectAccessImageByteGray img, Plane pPlane) {
         this.image = img;
+        this.mPlane = pPlane;
         this.sizeX = (int) inputImg.dimension(0);
         this.sizeY = (int) inputImg.dimension(1);
         this.sizeZ = (int) inputImg.dimension(2);
-        this.planeSizeX = (int) inputImg.dimension(0);
-        this.planeSizeY = (int) inputImg.dimension(1);
-        this.mPlane = pPlane;
+        int[] dimsInd = mPlane.getActiveDims();
+        this.planeSizeX = (int) inputImg.dimension(dimsInd[0]);
+        this.planeSizeY = (int) inputImg.dimension(dimsInd[1]);
+
         this.min = 0;
         this.max = 511;
-
-        boolean compat = false;
-
-        int[] dims = selectedPlaneSize(mPlane);
-        compat = (dims[0] == planeSizeX & dims[1] == planeSizeY);
-
-        if (!compat) {
-            throw new IllegalArgumentException(String.format("Wrong output img parameters: %s slice requires %dx%d, " +
-                    "provided: %dx%d", mPlane, dims[0], dims[1], planeSizeX, planeSizeY));
-        }
-
-//        System.out.println(String.format("img size: %dx%d", sizeX, sizeY));
 
         this.srcImg = inputImg;
         this.trgImg = trgImg;
@@ -70,49 +63,20 @@ public class Slicer {
         this.kernelSourceConvert = readFile("resources/kernels/SixteenToEightBit.cl");
 
         initCL();
-    }
 
-    public void setMin(short min) {
-        this.min = min;
-    }
-
-    public void setMax(short max) {
-        this.max = max;
-    }
-
-    private int[] selectedPlaneSize(Plane pPlane) {
-        int[] res = new int[2];
-        switch (mPlane) {
-            case XY:
-                res[0] = sizeX;
-                res[1] = sizeY;
-                break;
-            case XZ:
-                res[0] = sizeX;
-                res[1] = sizeZ;
-                break;
-            case YZ:
-                res[0] = sizeY;
-                res[1] = sizeZ;
-        }
-        return res;
-    }
-
-    public void getSlice(int slicePos) {
-
-        System.out.println("slicer pos: " + slicePos);
-        System.out.println("slicer dim: " + mPlane.getSlideDim());
-
-        long workSizeSlice[] = new long[3];
+        this.workSizeSlice = new long[3];
         workSizeSlice[0] = sizeX;
         workSizeSlice[1] = sizeY;
         workSizeSlice[2] = sizeZ;
-//        System.out.println(String.format("3d stack %dx%dx%d", sizeX, sizeY, sizeZ));
 
+        this.workSizeConvert = new long[2];
+        workSizeConvert[0] = planeSizeX;
+        workSizeConvert[1] = planeSizeY;
 
         clEnqueueWriteBuffer(commandQueue, pixelMem, true, 0,
                 Sizeof.cl_short * sizeY * sizeX*sizeZ, Pointer.to(srcImg.getContiguousMemory().getByteBuffer()), 0,
                 null, null);
+
 
         clSetKernelArg(kernelSlice, 0, Sizeof.cl_mem, Pointer.to(pixelMem));
         clSetKernelArg(kernelSlice, 1, Sizeof.cl_mem, Pointer.to(interm));
@@ -120,38 +84,6 @@ public class Slicer {
         clSetKernelArg(kernelSlice, 3, Sizeof.cl_int, Pointer.to(new int[]{sizeY}));
         clSetKernelArg(kernelSlice, 4, Sizeof.cl_int, Pointer.to(new int[]{sizeZ}));
         clSetKernelArg(kernelSlice, 5, Sizeof.cl_int, Pointer.to(new int[]{mPlane.getSlideDim()}));
-        clSetKernelArg(kernelSlice, 6, Sizeof.cl_int, Pointer.to(new int[]{slicePos}));
-
-
-        clEnqueueNDRangeKernel(commandQueue, kernelSlice, 3, null,
-                workSizeSlice, null, 0, null, null);
-
-
-        convert();
-
-
-
-//        ShortBuffer sh = ShortBuffer.allocate(planeSizeX*planeSizeY);
-//        clEnqueueReadBuffer(commandQueue, interm, CL_TRUE, 0,
-//                Sizeof.cl_short * planeSizeX * planeSizeY, Pointer.to(sh), 0, null,
-//                null);
-
-//        System.out.println("what we've got:");
-//        for (int i = 0; i <500; i++) {
-//            System.out.println(sh.get(i));
-//        }
-
-//        this.image.getBuffer().rewind();
-
-
-    }
-
-    public void convert() {
-
-        long workSizeConvert[] = new long[2];
-        workSizeConvert[0] = planeSizeX;
-        workSizeConvert[1] = planeSizeY;
-//        System.out.println(String.format("2d slice: %dx%d",planeSizeX, planeSizeY));
 
         clSetKernelArg(kernelConvert, 0, Sizeof.cl_mem, Pointer.to(interm));
         clSetKernelArg(kernelConvert, 1, Sizeof.cl_mem, Pointer.to(outputImgCL));
@@ -159,16 +91,36 @@ public class Slicer {
         clSetKernelArg(kernelConvert, 3, Sizeof.cl_int, Pointer.to(new int[] {planeSizeY}));
         clSetKernelArg(kernelConvert, 4, Sizeof.cl_short, Pointer.to(new short[] {this.min}));
         clSetKernelArg(kernelConvert, 5, Sizeof.cl_short, Pointer.to(new short[] {this.max}));
+    }
 
+    public void setMin(short min) {
+        this.min = min;
+        clSetKernelArg(kernelConvert, 4, Sizeof.cl_short, Pointer.to(new short[] {this.min}));
+
+    }
+
+    public void setMax(short max) {
+        this.max = max;
+        clSetKernelArg(kernelConvert, 5, Sizeof.cl_short, Pointer.to(new short[] {this.max}));
+
+    }
+
+
+    public void getSlice(int slicePos) {
+        clSetKernelArg(kernelSlice, 6, Sizeof.cl_int, Pointer.to(new int[]{slicePos}));
+        clEnqueueNDRangeKernel(commandQueue, kernelSlice, 3, null,
+                workSizeSlice, null, 0, null, null);
+        convert();
+    }
+
+    public void convert() {
         clEnqueueNDRangeKernel(commandQueue, kernelConvert, 2, null,
                 workSizeConvert, null, 0, null, null);
-
         clEnqueueReadBuffer(commandQueue, outputImgCL, CL_TRUE, 0,
                 Sizeof.cl_char * planeSizeX * planeSizeY, Pointer.to(this.image.getBuffer()), 0, null,
                 null);
         try {
             this.image.update();
-            System.out.println("upd image");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -271,12 +223,9 @@ public class Slicer {
 
     public static void main(String[] args) {
 
-
         Plane sth = Plane.XZ;
         String s = sth.toString();
         System.out.println(s);
-
-
     }
 
 }
