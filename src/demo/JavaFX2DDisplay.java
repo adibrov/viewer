@@ -11,6 +11,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.control.Slider;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
@@ -46,6 +47,10 @@ public class JavaFX2DDisplay extends Application {
     private Color full = new Color(0,1,0,.5);
     private Color empty = new Color(0,0,0, 0);
     private ArrayList<Pane> mPaneList;
+    private SurfexFirst sf;
+    private GridOverlay grov;
+    private int splitX;
+    private int splitY;
 
     public JavaFX2DDisplay(OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> img, Plane pPlane) {
         this.imgIn = img;
@@ -57,10 +62,20 @@ public class JavaFX2DDisplay extends Application {
                 (activeDims[1]));
         System.out.println("image to display dims: " + imgToDisplay.getWidth() + " " + imgToDisplay.getHeight());
         this.slicer = new Slicer(imgIn, imgToDisplay, mPlane);
+
+        this.splitX = 20;
+        this.splitY = 20;
+
+        grov = new GridOverlay((int)imgToDisplay.getWidth(), (int)imgToDisplay.getHeight(), (int)imgIn
+                .dimension(mPlane
+                        .getSlideDim()), splitX,splitY);
+
+//        grov.initializeGrid();
         slicer.getSlice(currentSlice);
 
 
         listenerList = new LinkedList<>();
+        sf =  new SurfexFirst(img, grov.getTileOriX(), grov.getTileOriY());
     }
 
     @Override
@@ -85,7 +100,8 @@ public class JavaFX2DDisplay extends Application {
 
 
         imageView_Source.fitWidthProperty().bind(primaryStage.widthProperty().subtract(20));
-        imageView_Source.fitHeightProperty().bind(primaryStage.heightProperty().subtract(150));
+        imageView_Source.fitHeightProperty().bind(primaryStage.heightProperty().subtract(250));
+
 //        imageView_Source.setX(150.0);
         System.out.println(imageView_Source.getX());
         imageView_Source.xProperty().addListener((ob, o, n)->{
@@ -107,23 +123,18 @@ public class JavaFX2DDisplay extends Application {
         sliderZ.setBlockIncrement(1);
 
 
-        int splitX = 20;
-        int splitY = 20;
 
-        GridOverlay grow = new GridOverlay((int)imgToDisplay.getWidth(), (int)imgToDisplay.getHeight(), (int)imgIn
-                .dimension(mPlane
-                .getSlideDim()), splitX,splitY);
-        int[] indices = new int[splitX*splitY];
+        int[] indices = new int[this.splitX*this.splitY];
 
         Random rand = new Random();
-        for (int i = 0; i < indices.length; i++) {
-            indices[i] = rand.nextInt((int)imgIn
-                    .dimension(mPlane
-                            .getSlideDim()));
-        }
+//        for (int i = 0; i < indices.length; i++) {
+//            indices[i] = rand.nextInt((int)imgIn
+//                    .dimension(mPlane
+//                            .getSlideDim()));
+//        }
 
-        grow.initializeGrid(indices);
-        mPaneList = grow.getPaneList();
+        grov.initializeGrid(indices);
+        mPaneList = grov.getPaneList();
 
 
 
@@ -151,15 +162,30 @@ public class JavaFX2DDisplay extends Application {
         });
 
 
-
+        HBox hboxBig = new HBox();
 
 
 //        grid.getColumnConstraints().addAll(cc);
-        vBoxSliders.getChildren().addAll(sliderZ, sliderMin, sliderMax);
-        StackPane imgAndOverlay = new StackPane();
-        imgAndOverlay.getChildren().addAll(imageView_Source, grow.getMainStackPane());
-        imageBox.getChildren().addAll(imgAndOverlay, vBoxSliders);
+        Button computeTilesButton = new Button("Compute Tiles");
 
+        computeTilesButton.setOnAction((e)->{
+            grov.initializeGrid(sf.computeTiles());
+            mPaneList = grov.getPaneList();
+        });
+        vBoxSliders.getChildren().addAll(sliderZ, sliderMin, sliderMax, computeTilesButton);
+        StackPane imgAndOverlay = new StackPane();
+        StackPane grovPane = grov.getMainStackPane();
+
+        grovPane.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
+        grovPane.prefHeightProperty().bind(primaryStage.heightProperty().subtract(250));
+
+        imgAndOverlay.getChildren().addAll(imageView_Source, grovPane);
+        imageBox.getChildren().addAll(imgAndOverlay, vBoxSliders);
+//        hboxBig.getChildren().addAll(imageBox, computeTilesButton);
+//        hboxBig.setPadding(new Insets(120,20,20,20));
+//
+//        hboxBig.setMaxWidth(primaryStage.getMaxWidth());
+//        hboxBig.setAlignment(Pos.TOP_CENTER);
 //        imgAndOverlay.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
 //        imgAndOverlay.prefHeightProperty().bind(primaryStage.heightProperty().subtract(150));
 //        imgAndOverlay.setPadding(new Insets(50,50,50,50));
@@ -175,6 +201,12 @@ public class JavaFX2DDisplay extends Application {
 
         root.getChildren().addAll(imageBox);
         Scene scene = new Scene(root, 500, imgToDisplay.getHeight() + 150);
+//
+//        int[] sth = sf.computeTiles();
+//        System.out.println("compute tiles returned an array of size: " + sth.length);
+//        for (int i = 0; i < 100; i++) {
+//            System.out.println(sth[i]);
+//        }
 
 
         primaryStage.setTitle("Current slice");
@@ -184,9 +216,7 @@ public class JavaFX2DDisplay extends Application {
 
     }
 
-    public void initializeGrid(int stepX, int stepY){
 
-    }
 
     public void run(String[] args) {
         launch(args);
