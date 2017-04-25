@@ -3,27 +3,29 @@ package demo;
 
 import coremem.offheap.OffHeapMemory;
 import coremem.offheap.OffHeapMemoryAccess;
-import image.DirectAccessImageByteGray;
-import image.Listener;
-import image.Plane;
-import image.Slicer;
+import image.*;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Slider;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
+import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import net.imglib2.img.basictypeaccess.offheap.ShortOffHeapAccess;
 import net.imglib2.img.planar.OffHeapPlanarImg;
 import net.imglib2.img.planar.OffHeapPlanarImgFactory;
 import net.imglib2.type.numeric.integer.UnsignedShortType;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.Random;
 
 import static clearcontrol.simulation.loaders.SampleSpaceSaveAndLoad.loadUnsignedShortSampleSpaceFromDisk;
 
@@ -40,9 +42,14 @@ public class JavaFX2DDisplay extends Application {
     private LinkedList<Listener> listenerList;
     Slicer slicer;
     private Plane mPlane;
+    private Rectangle rect;
+    private Color full = new Color(0,1,0,.5);
+    private Color empty = new Color(0,0,0, 0);
+    private ArrayList<Pane> mPaneList;
 
     public JavaFX2DDisplay(OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> img, Plane pPlane) {
         this.imgIn = img;
+        this.mPaneList = new ArrayList<>();
         this.currentSlice = 0;
         this.mPlane = pPlane;
         int[] activeDims = mPlane.getActiveDims();
@@ -63,6 +70,14 @@ public class JavaFX2DDisplay extends Application {
         imageView_Source = new ImageView();
         imageView_Source.setImage(imgToDisplay);
 
+        rect = new Rectangle();
+//        rect.setX(10);
+//        rect.setY(10);
+        rect.setFill(new Color(0,1,0,0.2));
+
+        Rectangle rect1 = new Rectangle();
+        rect1.setFill(new Color(0,0,1,0.2));
+
         VBox imageBox = new VBox(20);
         imageBox.setPadding(new Insets(20, 20, 20, 20));
         imageBox.setMaxWidth(primaryStage.getMaxWidth());
@@ -71,17 +86,54 @@ public class JavaFX2DDisplay extends Application {
 
         imageView_Source.fitWidthProperty().bind(primaryStage.widthProperty().subtract(20));
         imageView_Source.fitHeightProperty().bind(primaryStage.heightProperty().subtract(150));
+//        imageView_Source.setX(150.0);
+        System.out.println(imageView_Source.getX());
+        imageView_Source.xProperty().addListener((ob, o, n)->{
+            System.out.println(n.intValue());
+        });
 //        imageView_Source.fitHeightProperty().bind(imageView_Source.fitWidthProperty());
         VBox vBoxSliders = new VBox(15);
         vBoxSliders.setMinHeight(100);
         vBoxSliders.setPadding(new Insets(20, 20, 20, 20));
         vBoxSliders.setAlignment(Pos.BOTTOM_CENTER);
+        vBoxSliders.getChildren().toArray();
+//        vBoxSliders.setVisible(false);
 
-        Slider sliderZ = new Slider(0, imgIn.dimension(mPlane.getSlideDim()), 0);
+       // Node cont = new
+        Pane p1 = new Pane();
+        Pane p2 = new Pane();
+
+        Slider sliderZ = new Slider(0, imgIn.dimension(mPlane.getSlideDim())-1, 0);
         sliderZ.setBlockIncrement(1);
+
+
+        int splitX = 20;
+        int splitY = 20;
+
+        GridOverlay grow = new GridOverlay((int)imgToDisplay.getWidth(), (int)imgToDisplay.getHeight(), (int)imgIn
+                .dimension(mPlane
+                .getSlideDim()), splitX,splitY);
+        int[] indices = new int[splitX*splitY];
+
+        Random rand = new Random();
+        for (int i = 0; i < indices.length; i++) {
+            indices[i] = rand.nextInt((int)imgIn
+                    .dimension(mPlane
+                            .getSlideDim()));
+        }
+
+        grow.initializeGrid(indices);
+        mPaneList = grow.getPaneList();
+
+
+
         sliderZ.valueProperty().addListener((ob, o, n) -> {
             currentSlice = n.intValue();
             slicer.getSlice(currentSlice);
+            mPaneList.get(o.intValue()).setVisible(false);
+            mPaneList.get(n.intValue()).setVisible(true);
+
+
         });
         Slider sliderMin = new Slider(0, 511, 0);
         sliderMin.setBlockIncrement(1);
@@ -90,6 +142,7 @@ public class JavaFX2DDisplay extends Application {
             slicer.convert();
         });
 
+
         Slider sliderMax = new Slider(0, 511, 511);
         sliderMax.setBlockIncrement(1);
         sliderMax.valueProperty().addListener((ob, o, n) -> {
@@ -97,12 +150,30 @@ public class JavaFX2DDisplay extends Application {
             slicer.convert();
         });
 
-        vBoxSliders.getChildren().addAll(sliderZ, sliderMin, sliderMax);
-        imageBox.getChildren().addAll(imageView_Source, vBoxSliders);
 
+
+
+
+//        grid.getColumnConstraints().addAll(cc);
+        vBoxSliders.getChildren().addAll(sliderZ, sliderMin, sliderMax);
+        StackPane imgAndOverlay = new StackPane();
+        imgAndOverlay.getChildren().addAll(imageView_Source, grow.getMainStackPane());
+        imageBox.getChildren().addAll(imgAndOverlay, vBoxSliders);
+
+//        imgAndOverlay.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
+//        imgAndOverlay.prefHeightProperty().bind(primaryStage.heightProperty().subtract(150));
+//        imgAndOverlay.setPadding(new Insets(50,50,50,50));
+
+//        p1.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
+//        p1.prefHeightProperty().bind(primaryStage.heightProperty().subtract(150));
 
         StackPane root = new StackPane();
-        root.getChildren().add(imageBox);
+
+
+
+
+
+        root.getChildren().addAll(imageBox);
         Scene scene = new Scene(root, 500, imgToDisplay.getHeight() + 150);
 
 
@@ -113,15 +184,9 @@ public class JavaFX2DDisplay extends Application {
 
     }
 
-//    private void notifyListeners() {
-//        for (Listener listener : listenerList) {
-//            listener.fire();
-//        }
-//    }
-//
-//    public void addListener(Listener listener) {
-//        listenerList.add(listener);
-//    }
+    public void initializeGrid(int stepX, int stepY){
+
+    }
 
     public void run(String[] args) {
         launch(args);
