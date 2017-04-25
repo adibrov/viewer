@@ -86,17 +86,17 @@ public class GridOverlay {
         int anomY = 0;
         Rectangle rect = null;
 
-        for (int i = 0; i < mRectsX; i++) {
-            for (int j = 0; j < mRectsY; j++) {
-                x = i*normSizeX + anomX;
-                y = j*normSizeY + anomY;
+        for (int i = 0; i < mRectsY; i++) {
+            for (int j = 0; j < mRectsX; j++) {
+                x = j*normSizeX + anomX;
+                y = i*normSizeY + anomY;
 
 
-                mTileOriX[i] = x;
-                mTileOriY[j] = y;
+                mTileOriX[j] = x;
+                mTileOriY[i] = y;
 
-                width = xsizes[i] == 1?  normSizeX+1 : normSizeX;
-                height = ysizes[j] == 1?  normSizeY+1 : normSizeY;
+                width = xsizes[j] == 1?  normSizeX+1 : normSizeX;
+                height = ysizes[i] == 1?  normSizeY+1 : normSizeY;
                 rect = new Rectangle();
                 rect.setFill(color);
                 rect.setStroke(new Color(0,1,0,.1));
@@ -106,24 +106,25 @@ public class GridOverlay {
                 rect.xProperty().bind(mMainStackPane.widthProperty().multiply((double)x/mImageSizeX));
                 rect.yProperty().bind(mMainStackPane.heightProperty().multiply((double)y/mImageSizeY));
 
-                if (ysizes[j] == 1) {
-                    anomY+=1;
-                    rect.setStroke(new Color(0,0,1,0.3));
-                }
-                if (xsizes[i] == 1) {
-                  //  anomX+=1;
+
+                if (xsizes[j] == 1) {
+                    anomX+=1;
                     rect.setStroke(new Color(1,0,0,0.3));
                 }
 
 
                 mRectList.add( rect);
             }
-
-            if (xsizes[i] == 1) {
-                anomX+=1;
-                rect.setStroke(new Color(1,0,0,0.3));
+            if (ysizes[i] == 1) {
+                anomY+=1;
+                rect.setStroke(new Color(0,0,1,0.3));
             }
-            anomY = 0;
+
+//            if (xsizes[i] == 1) {
+//                anomX+=1;
+//                rect.setStroke(new Color(1,0,0,0.3));
+//            }
+            anomX = 0;
         }
 
 

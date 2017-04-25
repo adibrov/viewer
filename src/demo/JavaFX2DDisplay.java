@@ -63,8 +63,8 @@ public class JavaFX2DDisplay extends Application {
         System.out.println("image to display dims: " + imgToDisplay.getWidth() + " " + imgToDisplay.getHeight());
         this.slicer = new Slicer(imgIn, imgToDisplay, mPlane);
 
-        this.splitX = 20;
-        this.splitY = 20;
+        this.splitX = 10;
+        this.splitY = 10;
 
         grov = new GridOverlay((int)imgToDisplay.getWidth(), (int)imgToDisplay.getHeight(), (int)imgIn
                 .dimension(mPlane

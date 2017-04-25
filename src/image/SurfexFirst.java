@@ -231,6 +231,35 @@ public class SurfexFirst {
                 ());
 
 
+        short[] hist = new short[512];
+        short[] arr = new short[dims[0]*dims[1]*dims[2]];
+        imgIn.getContiguousMemory().copyTo(arr);
+        int x0 = 350; int y0 = 20; int x1 = 400; int y1 = 60;
+        int sizeZ = (int)imgIn.dimension(2); int sizeY = dims[1]; int sizeX = dims[0];
+        for (int k = 0; k < sizeZ; k++) {
+            for (int i = x0; i < x1; i++) {
+                for (int j = y0; j < y1; j++) {
+                    hist[arr[k*sizeX*sizeY + sizeX*j + i]] +=1;
+                }
+            }
+
+        }
+
+        int num = 0;
+        int th = 511;
+        while (num < (int)(0.1f*(y1-y0)*(x1-x0)*sizeZ)) {
+            num +=  hist[th];
+            th--;
+        }
+
+
+        System.out.println("hist last terms: ");
+        for (int i = 200; i > 20; i--) {
+            System.out.println(hist[i]);
+        }
+
+
+        System.out.println("th: " + th + " numpix: " + (y1-y0)*(x1-x0)*sizeZ + " fract num: " + num);
     }
 
 }
