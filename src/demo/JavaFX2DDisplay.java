@@ -13,9 +13,11 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Slider;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.*;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import net.imglib2.img.basictypeaccess.offheap.ShortOffHeapAccess;
 import net.imglib2.img.planar.OffHeapPlanarImg;
@@ -23,8 +25,6 @@ import net.imglib2.img.planar.OffHeapPlanarImgFactory;
 import net.imglib2.type.numeric.integer.UnsignedShortType;
 
 import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.Random;
 
 import static clearcontrol.simulation.loaders.SampleSpaceSaveAndLoad.loadUnsignedShortSampleSpaceFromDisk;
 
@@ -34,21 +34,31 @@ import static clearcontrol.simulation.loaders.SampleSpaceSaveAndLoad.loadUnsigne
 
 public class JavaFX2DDisplay extends Application {
 
-    private ImageView imageView_Source;
+    // Image Viewes
+    private ImageView imageViewSource;
+    private ImageView imageViewMaxProjection;
+
+    // Input 16 bit stack from the scope
     private OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> imgIn;
+
+    // Modified 8bit Image datastructure to display in JavaFX
     private DirectAccessImageByteGray imgToDisplay;
-    private int currentSlice;
-    private LinkedList<Listener> listenerList;
-    Slicer slicer;
-    private Plane mPlane;
-    private Rectangle rect;
-    private Color full = new Color(0,1,0,.5);
-    private Color empty = new Color(0,0,0, 0);
-    private ArrayList<Pane> mPaneListIntensities;
-    private ArrayList<Pane>  mPaneListVariance;
-    private SurfexFirst sf;
+
+    // Grid Overlays to visualise the surface detection process
     private GridOverlay gridOverlayIntensities;
     private GridOverlay gridOverlayVariance;
+
+    // OpenCL based modules for image processing
+    private Slicer slicer;
+    private SurfexFirst sf;
+
+    // Displayed Panes from Overlays
+    private ArrayList<Pane> mPaneListIntensities;
+    private ArrayList<Pane> mPaneListVariance;
+
+    // Other
+    private int currentSlice;
+    private Plane mPlane;
     private int splitX;
     private int splitY;
 
@@ -69,79 +79,36 @@ public class JavaFX2DDisplay extends Application {
 
         gridOverlayIntensities = new GridOverlay((int) imgToDisplay.getWidth(), (int) imgToDisplay.getHeight(), (int) imgIn
                 .dimension(mPlane
-                        .getSlideDim()), splitX, splitY, new Color(0,1,0,0.1));
-        gridOverlayVariance = new GridOverlay((int)imgToDisplay.getWidth(), (int)imgToDisplay.getHeight(), (int)imgIn
-                .dimension(mPlane.getSlideDim()), splitX, splitY, new Color(0,0,1,.1));
+                        .getSlideDim()), splitX, splitY, new Color(0, 1, 0, 0.1));
+        gridOverlayVariance = new GridOverlay((int) imgToDisplay.getWidth(), (int) imgToDisplay.getHeight(), (int) imgIn
+                .dimension(mPlane.getSlideDim()), splitX, splitY, new Color(0, 0, 1, .1));
 
-//        gridOverlayIntensities.initializeGrid();
+        gridOverlayVariance.initializeGridWithZeros();
+        gridOverlayIntensities.initializeGridWithZeros();
+
         slicer.getSlice(currentSlice);
 
 
-        listenerList = new LinkedList<>();
         sf = new SurfexFirst(img, gridOverlayIntensities.getTileOriX(), gridOverlayIntensities.getTileOriY());
     }
 
     @Override
     public void start(Stage primaryStage) {
 
+        // Setting the source image view
 
-        imageView_Source = new ImageView();
-        imageView_Source.setImage(imgToDisplay);
+        imageViewSource = new ImageView();
+        imageViewSource.setImage(imgToDisplay);
 
-        rect = new Rectangle();
-//        rect.setX(10);
-//        rect.setY(10);
-        rect.setFill(new Color(0,1,0,0.2));
+        // Setting a VBox for sliders
+        VBox vBoxSlidersSource = new VBox(15);
+        vBoxSlidersSource.setMinHeight(100);
+        vBoxSlidersSource.setPadding(new Insets(20, 20, 20, 20));
+        vBoxSlidersSource.setAlignment(Pos.BOTTOM_CENTER);
 
-        Rectangle rect1 = new Rectangle();
-        rect1.setFill(new Color(0,0,1,0.2));
-
-        VBox imageBox = new VBox(20);
-        imageBox.setPadding(new Insets(20, 20, 20, 20));
-        imageBox.setMaxWidth(primaryStage.getMaxWidth());
-        imageBox.setAlignment(Pos.TOP_CENTER);
-
-
-        imageView_Source.fitWidthProperty().bind(primaryStage.widthProperty().subtract(20));
-        imageView_Source.fitHeightProperty().bind(primaryStage.heightProperty().subtract(250));
-
-//        imageView_Source.setX(150.0);
-        System.out.println(imageView_Source.getX());
-        imageView_Source.xProperty().addListener((ob, o, n)->{
-            System.out.println(n.intValue());
-        });
-//        imageView_Source.fitHeightProperty().bind(imageView_Source.fitWidthProperty());
-        VBox vBoxSliders = new VBox(15);
-        vBoxSliders.setMinHeight(100);
-        vBoxSliders.setPadding(new Insets(20, 20, 20, 20));
-        vBoxSliders.setAlignment(Pos.BOTTOM_CENTER);
-        vBoxSliders.getChildren().toArray();
-//        vBoxSliders.setVisible(false);
-
-       // Node cont = new
-        Pane p1 = new Pane();
-        Pane p2 = new Pane();
-
-        Slider sliderZ = new Slider(0, imgIn.dimension(mPlane.getSlideDim())-1, 0);
+        // Setting sliders
+        Slider sliderZ = new Slider(0, imgIn.dimension(mPlane.getSlideDim()) - 1, 0);
         sliderZ.setBlockIncrement(1);
-
-
-
-        int[] indices = new int[this.splitX*this.splitY];
-
-        Random rand = new Random();
-//        for (int i = 0; i < indices.length; i++) {
-//            indices[i] = rand.nextInt((int)imgIn
-//                    .dimension(mPlane
-//                            .getSlideDim()));
-//        }
-
-        gridOverlayIntensities.initializeGrid(indices);
-        gridOverlayVariance.initializeGrid(indices);
-        mPaneListIntensities = gridOverlayIntensities.getPaneList();
-        mPaneListVariance = gridOverlayVariance.getPaneList();
-
-
 
         sliderZ.valueProperty().addListener((ob, o, n) -> {
             currentSlice = n.intValue();
@@ -150,9 +117,8 @@ public class JavaFX2DDisplay extends Application {
             mPaneListIntensities.get(n.intValue()).setVisible(true);
             mPaneListVariance.get(o.intValue()).setVisible(false);
             mPaneListVariance.get(n.intValue()).setVisible(true);
-
-
         });
+
         Slider sliderMin = new Slider(0, 511, 0);
         sliderMin.setBlockIncrement(1);
         sliderMin.valueProperty().addListener((ob, o, n) -> {
@@ -169,74 +135,86 @@ public class JavaFX2DDisplay extends Application {
         });
 
 
-        HBox hboxBig = new HBox();
+        // a VBox to hold source and sliders for the source
+        VBox sourceAndSlidersBox = new VBox(20);
+        // sourceAndSlidersBox.setMinHeight(imageViewSource.getFitHeight() + vBoxSlidersSource.getMinHeight());
+        sourceAndSlidersBox.setPadding(new Insets(20, 20, 20, 20));
+        sourceAndSlidersBox.setAlignment(Pos.TOP_CENTER);
+        vBoxSlidersSource.getChildren().addAll(sliderZ, sliderMin, sliderMax);
+
+        // Initializing panes
+        mPaneListIntensities = gridOverlayIntensities.getPaneList();
+        mPaneListVariance = gridOverlayVariance.getPaneList();
 
 
-//        grid.getColumnConstraints().addAll(cc);
+        // Menu buttons
         Button computeTilesButton = new Button("Compute Tiles");
         Button refineWithVarianceButton = new Button("Refine With Variance");
 
-        computeTilesButton.setOnAction((e)->{
+        computeTilesButton.setOnAction((e) -> {
             gridOverlayIntensities.initializeGrid(sf.computeTiles());
 //            gridOverlayVariance.initializeGrid(sf.computeTiles());
             mPaneListIntensities = gridOverlayIntensities.getPaneList();
         });
 
-        refineWithVarianceButton.setOnAction((e)->{
+        refineWithVarianceButton.setOnAction((e) -> {
 //            gridOverlayVariance.initializeGrid(sf.computeTiles());
             gridOverlayVariance.initializeGrid(sf.refineWithVariance());
             mPaneListVariance = gridOverlayVariance.getPaneList();
         });
 
-        vBoxSliders.getChildren().addAll(sliderZ, sliderMin, sliderMax, computeTilesButton, refineWithVarianceButton);
+
+        // Stackpane to host image and overlays aligned on top of each other
         StackPane imgAndOverlay = new StackPane();
         StackPane grovPaneInt = gridOverlayIntensities.getMainStackPane();
         StackPane grovPaneVar = gridOverlayVariance.getMainStackPane();
+        grovPaneInt.prefWidthProperty().bind(imgAndOverlay.prefWidthProperty());
+        grovPaneInt.prefHeightProperty().bind(imgAndOverlay.prefHeightProperty());
+        grovPaneVar.prefWidthProperty().bind(imgAndOverlay.prefWidthProperty());
+        grovPaneVar.prefHeightProperty().bind(imgAndOverlay.prefHeightProperty());
+
+        // Root HBox
+        HBox root = new HBox();
+        root.setSpacing(5);
+        root.setPadding(new Insets(20, 20, 20, 20));
+
+        // Menu - stuff on the left
+        VBox menu = new VBox();
+        menu.setAlignment(Pos.TOP_CENTER);
+        menu.setSpacing(10);
+        menu.getChildren().addAll(computeTilesButton, refineWithVarianceButton);
 
 
-        grovPaneInt.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
-        grovPaneInt.prefHeightProperty().bind(primaryStage.heightProperty().subtract(250));
+        // Binding width and height parameters
+        imageViewSource.fitWidthProperty().bind(imgAndOverlay.prefWidthProperty());
+        imageViewSource.fitHeightProperty().bind(imgAndOverlay.prefHeightProperty());
 
-        grovPaneVar.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
-        grovPaneVar.prefHeightProperty().bind(primaryStage.heightProperty().subtract(250));
+        imgAndOverlay.getChildren().addAll(imageViewSource, grovPaneInt, grovPaneVar);
+        imgAndOverlay.prefWidthProperty().bind(sourceAndSlidersBox.prefWidthProperty());
+        imgAndOverlay.prefHeightProperty().bind(sourceAndSlidersBox.prefHeightProperty().multiply(0.7));
 
-        imgAndOverlay.getChildren().addAll(imageView_Source, grovPaneInt, grovPaneVar);
-        imageBox.getChildren().addAll(imgAndOverlay, vBoxSliders);
-//        hboxBig.getChildren().addAll(imageBox, computeTilesButton);
-//        hboxBig.setPadding(new Insets(120,20,20,20));
-//
-//        hboxBig.setMaxWidth(primaryStage.getMaxWidth());
-//        hboxBig.setAlignment(Pos.TOP_CENTER);
-//        imgAndOverlay.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
-//        imgAndOverlay.prefHeightProperty().bind(primaryStage.heightProperty().subtract(150));
-//        imgAndOverlay.setPadding(new Insets(50,50,50,50));
+        sourceAndSlidersBox.getChildren().addAll(imgAndOverlay, vBoxSlidersSource);
 
-//        p1.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
-//        p1.prefHeightProperty().bind(primaryStage.heightProperty().subtract(150));
+        vBoxSlidersSource.prefWidthProperty().bind(sourceAndSlidersBox.prefWidthProperty());
+        vBoxSlidersSource.prefHeightProperty().bind(sourceAndSlidersBox.prefHeightProperty().multiply(0.3));
 
-        StackPane root = new StackPane();
+        sourceAndSlidersBox.prefWidthProperty().bind(root.prefWidthProperty().multiply(0.75));
+        sourceAndSlidersBox.prefHeightProperty().bind(root.prefHeightProperty());
+        menu.prefWidthProperty().bind(root.prefWidthProperty().multiply(0.25));
 
+        root.getChildren().addAll(menu, sourceAndSlidersBox);
 
+        // Initialising scene
+        Scene scene = new Scene(root, 1000, 800);
+        root.prefWidthProperty().bind(scene.widthProperty());
+        root.prefHeightProperty().bind(scene.heightProperty());
 
-
-
-        root.getChildren().addAll(imageBox);
-        Scene scene = new Scene(root, 500, imgToDisplay.getHeight() + 150);
-//
-//        int[] sth = sf.computeTiles();
-//        System.out.println("compute tiles returned an array of size: " + sth.length);
-//        for (int i = 0; i < 100; i++) {
-//            System.out.println(sth[i]);
-//        }
-
-
-        primaryStage.setTitle("Current slice");
+        primaryStage.setTitle("Surface extraction");
         primaryStage.setScene(scene);
         primaryStage.show();
 
 
     }
-
 
 
     public void run(String[] args) {

@@ -109,7 +109,7 @@ public class GridOverlay {
 
                 if (xsizes[j] == 1) {
                     anomX+=1;
-//                    rect.setStroke(new Color(1,0,0,0.3));
+                    rect.setStroke(new Color(1,0,0,0.3));
                 }
 
 
@@ -117,7 +117,7 @@ public class GridOverlay {
             }
             if (ysizes[i] == 1) {
                 anomY+=1;
-//                rect.setStroke(new Color(0,0,1,0.3));
+                rect.setStroke(new Color(0,0,1,0.3));
             }
 
 //            if (xsizes[i] == 1) {
@@ -130,6 +130,12 @@ public class GridOverlay {
 
 
 
+    }
+
+    public void initializeGridWithZeros(){
+
+        int[] zeros = new int[mRectsX*mRectsY];
+        initializeGrid(zeros);
     }
 
     public void initializeGrid(int[] indZ){
