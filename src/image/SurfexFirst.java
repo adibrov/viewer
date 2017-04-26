@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 
 import static clearcontrol.simulation.loaders.SampleSpaceSaveAndLoad.loadUnsignedShortSampleSpaceFromDisk;
-import static net.imglib2.img.utils.Convert.convertTIFFToRaw;
 import static org.jocl.CL.*;
 
 /**
@@ -22,20 +21,31 @@ import static org.jocl.CL.*;
  */
 public class SurfexFirst {
 
+    // Image
     private OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> srcImg;
 
-    private int sizeX;
-    private int sizeY;
-    private int sizeZ;
-
-    private String kernelSourceComputeTiles;
+    // OpenCL - general
     private cl_context context;
     private cl_command_queue commandQueue;
-    private cl_kernel kernelComputeTiles;
     private cl_mem image;
     private cl_mem tileOriX;
     private cl_mem tileOriY;
     private cl_mem tiles;
+
+    // OpenCL - kernels
+
+    // ComputeTiles - intensity based
+    private String kernelSourceComputeTiles;
+    private cl_kernel kernelComputeTiles;
+
+    // Refinement with variance
+    private String kernelSourceRefineWithVariance;
+    private cl_kernel kernelRefineWithVariance;
+
+    // State
+    private int sizeX;
+    private int sizeY;
+    private int sizeZ;
 
     private int tilesInX;
     private int tilesInY;
@@ -43,29 +53,34 @@ public class SurfexFirst {
     private int[] mTilesOriX;
     private int[] mTilesOriY;
 
-    private int[] tilesZCoord;
+    private int[] tilesZCoordInt;
+    private int[] tilesZCoordVar;
+
 
     private long[] workSizeTiles;
     private int threshold;
+    private int deltaZ;
 
 
     public SurfexFirst(OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> inputImg, int[] pTilesOriX, int[]
             pTilesOriY) {
+
+        this.srcImg = inputImg;
+
         this.sizeX = (int) inputImg.dimension(0);
         this.sizeY = (int) inputImg.dimension(1);
         this.sizeZ = (int) inputImg.dimension(2);
 
-        this.srcImg = inputImg;
-
-
         this.kernelSourceComputeTiles = readFile("resources/kernels/ComputeTiles.cl");
+        this.kernelSourceRefineWithVariance = readFile("resources/kernels/RefineWithVariance.cl");
+
         initCL();
 
         this.mTilesOriY = pTilesOriY;
         this.mTilesOriX = pTilesOriX;
         this.tilesInX = mTilesOriX.length;
         this.tilesInY = mTilesOriY.length;
-        System.out.println("arrs: " + mTilesOriX[0] + " " + mTilesOriX[1] + " " + mTilesOriX[2] + " "+ mTilesOriY[0] +
+        System.out.println("arrs: " + mTilesOriX[0] + " " + mTilesOriX[1] + " " + mTilesOriX[2] + " " + mTilesOriY[0] +
                 "" +
                 " " +
                 mTilesOriY[1] + " " + mTilesOriY[2]);
@@ -76,8 +91,10 @@ public class SurfexFirst {
         workSizeTiles[0] = tilesInX;
         workSizeTiles[1] = tilesInY;
 
-        this.tilesZCoord = new int[tilesInX * tilesInY];
+        this.tilesZCoordInt = new int[tilesInX * tilesInY];
+        this.tilesZCoordVar = new int[tilesInX * tilesInY];
         this.threshold = 100;
+        this.deltaZ = 2;
 
         image = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
                 sizeX * sizeY * sizeZ * Sizeof.cl_short, null, null);
@@ -113,19 +130,40 @@ public class SurfexFirst {
         clSetKernelArg(kernelComputeTiles, 7, Sizeof.cl_int, Pointer.to(new int[]{tilesInX}));
         clSetKernelArg(kernelComputeTiles, 8, Sizeof.cl_int, Pointer.to(new int[]{tilesInY}));
         clSetKernelArg(kernelComputeTiles, 9, Sizeof.cl_int, Pointer.to(new int[]{threshold}));
+
+        clSetKernelArg(kernelRefineWithVariance, 0, Sizeof.cl_mem, Pointer.to(image));
+        clSetKernelArg(kernelRefineWithVariance, 1, Sizeof.cl_mem, Pointer.to(tileOriX));
+        clSetKernelArg(kernelRefineWithVariance, 2, Sizeof.cl_mem, Pointer.to(tileOriY));
+        clSetKernelArg(kernelRefineWithVariance, 3, Sizeof.cl_mem, Pointer.to(tiles));
+        clSetKernelArg(kernelRefineWithVariance, 4, Sizeof.cl_int, Pointer.to(new int[]{sizeX}));
+        clSetKernelArg(kernelRefineWithVariance, 5, Sizeof.cl_int, Pointer.to(new int[]{sizeY}));
+        clSetKernelArg(kernelRefineWithVariance, 6, Sizeof.cl_int, Pointer.to(new int[]{sizeZ}));
+        clSetKernelArg(kernelRefineWithVariance, 7, Sizeof.cl_int, Pointer.to(new int[]{tilesInX}));
+        clSetKernelArg(kernelRefineWithVariance, 8, Sizeof.cl_int, Pointer.to(new int[] {tilesInY}));
+        clSetKernelArg(kernelRefineWithVariance, 9, Sizeof.cl_int, Pointer.to(new int[] {deltaZ}));
+
+
     }
 
     public int[] computeTiles() {
         clEnqueueNDRangeKernel(commandQueue, kernelComputeTiles, 2, null,
                 workSizeTiles, null, 0, null, null);
         clEnqueueReadBuffer(commandQueue, tiles, CL_TRUE, 0,
-                Sizeof.cl_int * tilesInX*tilesInY, Pointer.to(tilesZCoord), 0, null,
+                Sizeof.cl_int * tilesInX * tilesInY, Pointer.to(tilesZCoordInt), 0, null,
                 null);
 
-        return tilesZCoord;
+        return tilesZCoordInt;
     }
 
+    public int[] refineWithVariance() {
+        clEnqueueNDRangeKernel(commandQueue, kernelRefineWithVariance, 2, null,
+                workSizeTiles, null, 0, null, null);
+        clEnqueueReadBuffer(commandQueue, tiles, CL_TRUE, 0,
+                Sizeof.cl_int * tilesInX * tilesInY, Pointer.to(tilesZCoordVar), 0, null,
+                null);
 
+        return tilesZCoordVar;
+    }
 
 
     private void initCL() {
@@ -173,16 +211,19 @@ public class SurfexFirst {
 
 
         // Create the program
-        cl_program cpProgramSlice = clCreateProgramWithSource(context, 1,
+        cl_program cpProgramTiles = clCreateProgramWithSource(context, 1,
                 new String[]{kernelSourceComputeTiles}, null, null);
 
+        cl_program cpProgramVar = clCreateProgramWithSource(context, 1,
+                new String[]{kernelSourceRefineWithVariance}, null, null);
+
         // Build the program
-        clBuildProgram(cpProgramSlice, 0, null, "-cl-mad-enable", null, null);
+        clBuildProgram(cpProgramTiles, 0, null, "-cl-mad-enable", null, null);
+        clBuildProgram(cpProgramVar, 0, null, "-cl-mad-enable", null, null);
 
         // Create the kernelComputeTiles
-        kernelComputeTiles = clCreateKernel(cpProgramSlice, "ComputeTiles", null);
-
-
+        kernelComputeTiles = clCreateKernel(cpProgramTiles, "ComputeTiles", null);
+        kernelRefineWithVariance = clCreateKernel(cpProgramVar, "RefineWithVariance", null);
 
 
     }
@@ -232,14 +273,19 @@ public class SurfexFirst {
 
 
         short[] hist = new short[512];
-        short[] arr = new short[dims[0]*dims[1]*dims[2]];
+        short[] arr = new short[dims[0] * dims[1] * dims[2]];
         imgIn.getContiguousMemory().copyTo(arr);
-        int x0 = 350; int y0 = 20; int x1 = 400; int y1 = 60;
-        int sizeZ = (int)imgIn.dimension(2); int sizeY = dims[1]; int sizeX = dims[0];
+        int x0 = 350;
+        int y0 = 20;
+        int x1 = 400;
+        int y1 = 60;
+        int sizeZ = (int) imgIn.dimension(2);
+        int sizeY = dims[1];
+        int sizeX = dims[0];
         for (int k = 0; k < sizeZ; k++) {
             for (int i = x0; i < x1; i++) {
                 for (int j = y0; j < y1; j++) {
-                    hist[arr[k*sizeX*sizeY + sizeX*j + i]] +=1;
+                    hist[arr[k * sizeX * sizeY + sizeX * j + i]] += 1;
                 }
             }
 
@@ -247,8 +293,8 @@ public class SurfexFirst {
 
         int num = 0;
         int th = 511;
-        while (num < (int)(0.1f*(y1-y0)*(x1-x0)*sizeZ)) {
-            num +=  hist[th];
+        while (num < (int) (0.1f * (y1 - y0) * (x1 - x0) * sizeZ)) {
+            num += hist[th];
             th--;
         }
 
@@ -259,7 +305,7 @@ public class SurfexFirst {
         }
 
 
-        System.out.println("th: " + th + " numpix: " + (y1-y0)*(x1-x0)*sizeZ + " fract num: " + num);
+        System.out.println("th: " + th + " numpix: " + (y1 - y0) * (x1 - x0) * sizeZ + " fract num: " + num);
     }
 
 }

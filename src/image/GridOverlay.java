@@ -29,12 +29,12 @@ public class GridOverlay {
     private int[] mTileOriY;
 
 
-    public GridOverlay(int pImageSizeX, int pImageSizeY, int pImageSizeZ, int splitX, int splitY) {
+    public GridOverlay(int pImageSizeX, int pImageSizeY, int pImageSizeZ, int splitX, int splitY, Color pColor) {
 
         mMainStackPane = new StackPane();
         mTileOriX = new int[splitX];
         mTileOriY = new int[splitY];
-        this.color = new Color(0,1,0,0.2);
+        this.color = pColor;
 
         this.mImageSizeX = pImageSizeX;
         this.mImageSizeY = pImageSizeY;
@@ -109,7 +109,7 @@ public class GridOverlay {
 
                 if (xsizes[j] == 1) {
                     anomX+=1;
-                    rect.setStroke(new Color(1,0,0,0.3));
+//                    rect.setStroke(new Color(1,0,0,0.3));
                 }
 
 
@@ -117,7 +117,7 @@ public class GridOverlay {
             }
             if (ysizes[i] == 1) {
                 anomY+=1;
-                rect.setStroke(new Color(0,0,1,0.3));
+//                rect.setStroke(new Color(0,0,1,0.3));
             }
 
 //            if (xsizes[i] == 1) {
@@ -170,5 +170,9 @@ public class GridOverlay {
 
     public int[] getTileOriY() {
         return mTileOriY;
+    }
+
+    public void setColor(Color color) {
+        this.color = color;
     }
 }

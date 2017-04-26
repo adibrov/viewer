@@ -9,14 +9,12 @@ import javafx.application.Platform;
 import javafx.embed.swing.JFXPanel;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Slider;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
 import net.imglib2.img.basictypeaccess.offheap.ShortOffHeapAccess;
@@ -46,15 +44,18 @@ public class JavaFX2DDisplay extends Application {
     private Rectangle rect;
     private Color full = new Color(0,1,0,.5);
     private Color empty = new Color(0,0,0, 0);
-    private ArrayList<Pane> mPaneList;
+    private ArrayList<Pane> mPaneListIntensities;
+    private ArrayList<Pane>  mPaneListVariance;
     private SurfexFirst sf;
-    private GridOverlay grov;
+    private GridOverlay gridOverlayIntensities;
+    private GridOverlay gridOverlayVariance;
     private int splitX;
     private int splitY;
 
     public JavaFX2DDisplay(OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> img, Plane pPlane) {
         this.imgIn = img;
-        this.mPaneList = new ArrayList<>();
+        this.mPaneListIntensities = new ArrayList<>();
+        this.mPaneListVariance = new ArrayList<>();
         this.currentSlice = 0;
         this.mPlane = pPlane;
         int[] activeDims = mPlane.getActiveDims();
@@ -66,16 +67,18 @@ public class JavaFX2DDisplay extends Application {
         this.splitX = 10;
         this.splitY = 10;
 
-        grov = new GridOverlay((int)imgToDisplay.getWidth(), (int)imgToDisplay.getHeight(), (int)imgIn
+        gridOverlayIntensities = new GridOverlay((int) imgToDisplay.getWidth(), (int) imgToDisplay.getHeight(), (int) imgIn
                 .dimension(mPlane
-                        .getSlideDim()), splitX,splitY);
+                        .getSlideDim()), splitX, splitY, new Color(0,1,0,0.1));
+        gridOverlayVariance = new GridOverlay((int)imgToDisplay.getWidth(), (int)imgToDisplay.getHeight(), (int)imgIn
+                .dimension(mPlane.getSlideDim()), splitX, splitY, new Color(0,0,1,.1));
 
-//        grov.initializeGrid();
+//        gridOverlayIntensities.initializeGrid();
         slicer.getSlice(currentSlice);
 
 
         listenerList = new LinkedList<>();
-        sf =  new SurfexFirst(img, grov.getTileOriX(), grov.getTileOriY());
+        sf = new SurfexFirst(img, gridOverlayIntensities.getTileOriX(), gridOverlayIntensities.getTileOriY());
     }
 
     @Override
@@ -133,16 +136,20 @@ public class JavaFX2DDisplay extends Application {
 //                            .getSlideDim()));
 //        }
 
-        grov.initializeGrid(indices);
-        mPaneList = grov.getPaneList();
+        gridOverlayIntensities.initializeGrid(indices);
+        gridOverlayVariance.initializeGrid(indices);
+        mPaneListIntensities = gridOverlayIntensities.getPaneList();
+        mPaneListVariance = gridOverlayVariance.getPaneList();
 
 
 
         sliderZ.valueProperty().addListener((ob, o, n) -> {
             currentSlice = n.intValue();
             slicer.getSlice(currentSlice);
-            mPaneList.get(o.intValue()).setVisible(false);
-            mPaneList.get(n.intValue()).setVisible(true);
+            mPaneListIntensities.get(o.intValue()).setVisible(false);
+            mPaneListIntensities.get(n.intValue()).setVisible(true);
+            mPaneListVariance.get(o.intValue()).setVisible(false);
+            mPaneListVariance.get(n.intValue()).setVisible(true);
 
 
         });
@@ -167,19 +174,33 @@ public class JavaFX2DDisplay extends Application {
 
 //        grid.getColumnConstraints().addAll(cc);
         Button computeTilesButton = new Button("Compute Tiles");
+        Button refineWithVarianceButton = new Button("Refine With Variance");
 
         computeTilesButton.setOnAction((e)->{
-            grov.initializeGrid(sf.computeTiles());
-            mPaneList = grov.getPaneList();
+            gridOverlayIntensities.initializeGrid(sf.computeTiles());
+//            gridOverlayVariance.initializeGrid(sf.computeTiles());
+            mPaneListIntensities = gridOverlayIntensities.getPaneList();
         });
-        vBoxSliders.getChildren().addAll(sliderZ, sliderMin, sliderMax, computeTilesButton);
+
+        refineWithVarianceButton.setOnAction((e)->{
+//            gridOverlayVariance.initializeGrid(sf.computeTiles());
+            gridOverlayVariance.initializeGrid(sf.refineWithVariance());
+            mPaneListVariance = gridOverlayVariance.getPaneList();
+        });
+
+        vBoxSliders.getChildren().addAll(sliderZ, sliderMin, sliderMax, computeTilesButton, refineWithVarianceButton);
         StackPane imgAndOverlay = new StackPane();
-        StackPane grovPane = grov.getMainStackPane();
+        StackPane grovPaneInt = gridOverlayIntensities.getMainStackPane();
+        StackPane grovPaneVar = gridOverlayVariance.getMainStackPane();
 
-        grovPane.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
-        grovPane.prefHeightProperty().bind(primaryStage.heightProperty().subtract(250));
 
-        imgAndOverlay.getChildren().addAll(imageView_Source, grovPane);
+        grovPaneInt.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
+        grovPaneInt.prefHeightProperty().bind(primaryStage.heightProperty().subtract(250));
+
+        grovPaneVar.prefWidthProperty().bind(primaryStage.widthProperty().subtract(20));
+        grovPaneVar.prefHeightProperty().bind(primaryStage.heightProperty().subtract(250));
+
+        imgAndOverlay.getChildren().addAll(imageView_Source, grovPaneInt, grovPaneVar);
         imageBox.getChildren().addAll(imgAndOverlay, vBoxSliders);
 //        hboxBig.getChildren().addAll(imageBox, computeTilesButton);
 //        hboxBig.setPadding(new Insets(120,20,20,20));
