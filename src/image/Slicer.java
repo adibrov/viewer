@@ -18,9 +18,11 @@ public class Slicer {
 
     OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> srcImg;
     OffHeapPlanarImg<UnsignedShortType, ShortOffHeapAccess> trgImg;
+
     private int sizeX;
     private int sizeY;
     private int sizeZ;
+
     private Plane mPlane;
     private int planeSizeX;
     private int planeSizeY;
@@ -31,13 +33,21 @@ public class Slicer {
 
     private String kernelSourceSlice;
     private String kernelSourceConvert;
+    private String kernelSourceSliceFromMask;
+
     private cl_context context;
     private cl_command_queue commandQueue;
+
     private cl_kernel kernelSlice;
     private cl_kernel kernelConvert;
+    private cl_kernel kernelSliceFromMask;
+
     private cl_mem pixelMem;
     private cl_mem interm;
     private cl_mem outputImgCL;
+    private cl_mem tilesOriX;
+    private cl_mem tilesOriY;
+    private cl_mem tilesCoordZ;
 
     private long[] workSizeSlice;
     private long[] workSizeConvert;
@@ -61,6 +71,7 @@ public class Slicer {
         this.trgImg = trgImg;
         this.kernelSourceSlice = readFile("resources/kernels/Slicer.cl");
         this.kernelSourceConvert = readFile("resources/kernels/SixteenToEightBit.cl");
+        this.kernelSourceSliceFromMask = readFile("resources/kernels/SliceFromMask.cl");
 
         initCL();
 
@@ -91,6 +102,13 @@ public class Slicer {
         clSetKernelArg(kernelConvert, 3, Sizeof.cl_int, Pointer.to(new int[] {planeSizeY}));
         clSetKernelArg(kernelConvert, 4, Sizeof.cl_short, Pointer.to(new short[] {this.min}));
         clSetKernelArg(kernelConvert, 5, Sizeof.cl_short, Pointer.to(new short[] {this.max}));
+
+        clSetKernelArg(kernelSliceFromMask, 0, Sizeof.cl_mem, Pointer.to(pixelMem));
+        clSetKernelArg(kernelSliceFromMask, 1, Sizeof.cl_mem, Pointer.to(interm));
+        clSetKernelArg(kernelSliceFromMask, 2, Sizeof.cl_int, Pointer.to(new int[]{sizeX}));
+        clSetKernelArg(kernelSliceFromMask, 3, Sizeof.cl_int, Pointer.to(new int[]{sizeY}));
+        clSetKernelArg(kernelSliceFromMask, 4, Sizeof.cl_int, Pointer.to(new int[]{sizeZ}));
+
     }
 
     public void setMin(short min) {
@@ -111,6 +129,62 @@ public class Slicer {
         clEnqueueNDRangeKernel(commandQueue, kernelSlice, 3, null,
                 workSizeSlice, null, 0, null, null);
         convert();
+    }
+
+    public void getSliceFromTileMask(int[] tilesOriX, int[] tilesOriY, int[] tilesCoordZ, DirectAccessImageByteGray
+            image) {
+        this.tilesOriX = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
+                tilesOriX.length * Sizeof.cl_int, null, null);
+        this.tilesOriY = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
+                tilesOriY.length * Sizeof.cl_int, null, null);
+        this.tilesCoordZ = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
+                tilesCoordZ.length * Sizeof.cl_int, null, null);
+
+       long[] workSizeSliceFromMask = new long[2];
+        workSizeSliceFromMask[0] = tilesOriX.length;
+        workSizeSliceFromMask[1] = tilesOriY.length;
+
+        for (int i = 0; i < tilesOriY.length; i++) {
+            for (int j = 0; j < tilesOriX.length; j++) {
+                System.out.print(tilesCoordZ[i*tilesOriX.length + j] + " ");
+            }
+            System.out.println();
+        }
+
+        System.out.println("tiles ori sizes " + tilesOriX.length + " " + tilesOriY.length);
+        System.out.println("tiles z size " + tilesCoordZ.length);
+
+        clEnqueueWriteBuffer(commandQueue, this.tilesOriX, true, 0,
+                Sizeof.cl_int * tilesOriX.length, Pointer.to(tilesOriX), 0,
+                null, null);
+
+        clEnqueueWriteBuffer(commandQueue, this.tilesOriY, true, 0,
+                Sizeof.cl_int * tilesOriY.length, Pointer.to(tilesOriY), 0,
+                null, null);
+
+        clEnqueueWriteBuffer(commandQueue, this.tilesCoordZ, true, 0,
+                Sizeof.cl_int * tilesCoordZ.length, Pointer.to(tilesCoordZ), 0,
+                null, null);
+
+        clSetKernelArg(kernelSliceFromMask, 5, Sizeof.cl_mem, Pointer.to(this.tilesOriX));
+        clSetKernelArg(kernelSliceFromMask, 6, Sizeof.cl_mem, Pointer.to(this.tilesOriY));
+        clSetKernelArg(kernelSliceFromMask, 7, Sizeof.cl_mem, Pointer.to(this.tilesCoordZ));
+        clSetKernelArg(kernelSliceFromMask, 8, Sizeof.cl_int, Pointer.to(new int[] {tilesOriX.length}));
+        clSetKernelArg(kernelSliceFromMask, 9, Sizeof.cl_int, Pointer.to(new int[] {tilesOriY.length}));
+
+        clEnqueueNDRangeKernel(commandQueue, kernelSliceFromMask, 2, null,
+                workSizeSliceFromMask, null, 0, null, null);
+        clEnqueueNDRangeKernel(commandQueue, kernelConvert, 2, null,
+                workSizeConvert, null, 0, null, null);
+        clEnqueueReadBuffer(commandQueue, outputImgCL, CL_TRUE, 0,
+                Sizeof.cl_char * (int)image.getWidth()*(int)image.getHeight(), Pointer.to(image.getBuffer()), 0,
+                null,
+                null);
+        try {
+            image.update();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public void convert() {
@@ -176,14 +250,18 @@ public class Slicer {
                 new String[]{kernelSourceSlice}, null, null);
         cl_program cpProgramConvert = clCreateProgramWithSource(context, 1,
                 new String[]{kernelSourceConvert}, null, null);
+        cl_program cpProgramSliceFromMask = clCreateProgramWithSource(context, 1,
+                new String[]{kernelSourceSliceFromMask}, null, null);
 
         // Build the program
         clBuildProgram(cpProgramSlice, 0, null, "-cl-mad-enable", null, null);
         clBuildProgram(cpProgramConvert, 0, null, "-cl-mad-enable", null, null);
+        clBuildProgram(cpProgramSliceFromMask, 0, null, "-cl-mad-enable", null, null);
 
         // Create the kernelSlice
         kernelSlice = clCreateKernel(cpProgramSlice, "Slicer", null);
         kernelConvert = clCreateKernel(cpProgramConvert, "SixteenToEightBit", null);
+        kernelSliceFromMask = clCreateKernel(cpProgramSliceFromMask, "SliceFromMask", null);
 
 
         // Create the memory object which will be filled with the
